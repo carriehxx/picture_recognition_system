@@ -68,7 +68,7 @@ API_HOST=0.0.0.0
 API_PORT=5000
 API_DEBUG=False
 
-# 阿里云OSS配置（可选）
+# 阿里云OSS配置
 STORAGE_PROVIDER=aliyun
 ALIYUN_BUCKET_NAME=your-bucket-name
 ALIYUN_REGION=oss-cn-shenzhen
@@ -209,24 +209,6 @@ CHILD_CONFIG = {
 - **local**: 本地文件存储
 - **aliyun**: 阿里云OSS存储
 
-## 🧪 测试
-
-### 测试图片识别
-```bash
-python test_add_child_with_recognition.py
-```
-
-### 测试API接口
-```bash
-# 健康检查
-curl http://localhost:5000/health
-
-# 添加测试儿童
-curl -X POST http://localhost:5000/database/add_child \
-  -H 'Content-Type: application/json' \
-  -d '{"name": "测试儿童", "student_id": 9999, "age": 6, "class_id": 1, "images": ["base64数据"]}'
-```
-
 ## 🔧 故障排除
 
 ### 常见问题
@@ -288,7 +270,7 @@ python start_system.py
 
 如有问题或建议，请通过以下方式联系：
 - 提交 Issue
-- 发送邮件
+- 发送邮件 [点击这里](carriehuangxin@foxmail.com)
 - 查看项目文档
 
 ---
