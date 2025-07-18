@@ -270,7 +270,7 @@ python start_system.py
 
 如有问题或建议，请通过以下方式联系：
 - 提交 Issue
-- 发送邮件 [点击这里](carriehuangxin@foxmail.com)
+- 发送邮件 [点击这里](mainto:carriehuangxin@foxmail.com)
 - 查看项目文档
 
 ---
