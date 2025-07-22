@@ -21,10 +21,10 @@ class BaseStorageManager(ABC):
         
     def generate_object_key(self, category: str, filename: str, activity_name: str = None) -> str:
         """
-        生成对象存储的key
+        生成对象存储的key，确保同一批次上传的文件也能生成唯一key
         
         Args:
-            category: 文件类别 (faces, originals, processed, thumbnails)
+            category: 文件类别 (originals, thumbnails)
             filename: 文件名
             activity_name: 活动名称
             
@@ -39,14 +39,18 @@ class BaseStorageManager(ABC):
         date_path = f"{now.year}/{now.month:02d}"
         
         name, ext = os.path.splitext(filename)
+        # 增加更高精度的时间戳和随机数，确保同一秒内多次上传也不会重复
+        high_precision_ts = int(time.time() * 1000)  # 毫秒级时间戳
+        random_part = os.urandom(4).hex()  # 4字节随机数
+        
         if activity_name:
             # 生成唯一标识
-            unique_id = hashlib.md5(f"{activity_name}_{int(time.time())}".encode()).hexdigest()[:8]
+            unique_id = hashlib.md5(f"{activity_name}_{filename}_{high_precision_ts}_{random_part}".encode()).hexdigest()[:8]
             final_name = f"{activity_name}_{unique_id}{ext}"
         else:
-            # 生成时间戳唯一标识
-            timestamp = int(time.time())
-            final_name = f"{name}_{timestamp}{ext}"
+            # 生成唯一标识
+            unique_id = hashlib.md5(f"{name}_{high_precision_ts}_{random_part}".encode()).hexdigest()[:8]
+            final_name = f"{name}_{unique_id}{ext}"
         
         return f"{base_path}/{date_path}/{final_name}"
     

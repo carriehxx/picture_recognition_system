@@ -1,3 +1,8 @@
+# todo:
+# 关于图片分类做一下修改：包含扩展photos数据库多一列，还是怎样设计，更新相关插入语句的参数，建议使用枚举类型enumerate
+# 需要存到识别数据里面吗，不知道
+# 或者可以用另外一个方法，图片储存下多储存一列，包含缩略图地址thumbnail path，然后识别的时候，如果缩略图地址不为空，则使用缩略图地址，否则使用原图地址
+
 #!/usr/bin/env python3
 """
 数据库集成模块
@@ -57,7 +62,6 @@ class ChildFaceDatabaseIntegration:
                 logger.warning(f"⚠️  对象存储初始化失败，将使用本地存储: {e}")
                 self.use_object_storage = False
         
-        # 测试数据库连接
         self._test_connection()
     
     def _test_connection(self):
@@ -204,7 +208,7 @@ class ChildFaceDatabaseIntegration:
     def upload_recognized_photo(self, test_image_path: str, recognized_child_id: int = None, 
                           recognition_confidence: float = 0.0, session_id: str = None,
                           class_id: int = None, activity_detail: str = None, 
-                          is_public: bool = False, uploader_id: int = 1) -> Dict[str, Any]:
+                          is_public: bool = False, uploader_id: int = 1, category: str = 'originals') -> Dict[str, Any]:
         """
         上传测试图片到OSS并保存识别记录到数据库
         
@@ -216,6 +220,7 @@ class ChildFaceDatabaseIntegration:
             class_id: 班级ID
             activity_detail: 活动详情
             is_public: 是否为公开图片
+            category: 图片类别: 包含 - 原图片，缩略图
             
         Returns:
             上传结果和数据库记录信息
@@ -237,7 +242,7 @@ class ChildFaceDatabaseIntegration:
             if self.use_object_storage and self.storage_manager:
                 # 生成对象键（存储在detect_images目录）
                 object_key = self.storage_manager.generate_object_key(
-                    'detect_images', standard_filename, 'batch_recognition'
+                    category, standard_filename, activity_detail
                 )
                 
                 # 上传文件
@@ -311,8 +316,6 @@ class ChildFaceDatabaseIntegration:
             recognition_data = {
                 'object_key': object_key,
                 'file_size': file_size,
-                'recognized_child_id': recognized_child_id,
-                'recognition_confidence': recognition_confidence,
                 'session_id': session_id,
                 'is_test_image': True,  # 标记为测试图片
                 'activity_detail': safe_activity_detail,  # 使用安全的版本
@@ -502,79 +505,6 @@ class ChildFaceDatabaseIntegration:
                 cursor.close()
                 connection.close()
     
-    def save_recognition_record(self, test_image_path: str, recognized_child_id: Optional[int],
-                               confidence: float, distance: float, threshold_used: float,
-                               recognition_method: str, face_quality_score: float,
-                               processing_time_ms: int, session_id: str = None) -> int:
-        """
-        保存识别记录
-        
-        Args:
-            test_image_path: 测试图片路径
-            recognized_child_id: 识别出的儿童ID
-            confidence: 识别置信度
-            distance: 特征距离
-            threshold_used: 使用的阈值
-            recognition_method: 识别方法
-            face_quality_score: 人脸质量分数
-            processing_time_ms: 处理时间（毫秒）
-            session_id: 会话ID
-            
-        Returns:
-            识别记录ID
-        """
-        try:
-            connection = self._get_connection()
-            cursor = connection.cursor()
-            
-            # 确定识别状态
-            if recognized_child_id is not None:
-                status = 'success'
-            elif confidence > 0:
-                status = 'unknown'
-            else:
-                status = 'failed'
-            
-            # 生成会话ID
-            if session_id is None:
-                session_id = str(uuid.uuid4())
-            
-            insert_query = """
-            INSERT INTO recognition_records (test_image_url, recognized_child_id, confidence, 
-                                           distance, threshold_used, recognition_method, 
-                                           face_quality_score, processing_time_ms, recognition_status, 
-                                           session_id, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            
-            values = (
-                test_image_path,
-                recognized_child_id,
-                confidence,
-                distance,
-                threshold_used,
-                recognition_method,
-                face_quality_score,
-                processing_time_ms,
-                status,
-                session_id,
-                datetime.now()
-            )
-            
-            cursor.execute(insert_query, values)
-            record_id = cursor.lastrowid
-            
-            logger.info(f"✅ 识别记录已保存: Record ID {record_id}")
-            return record_id
-            
-        except Error as e:
-            logger.error(f"❌ 保存识别记录失败: {e}")
-            raise
-        finally:
-            if connection.is_connected():
-                cursor.close()
-                connection.close()
-    
     def get_children_needing_update(self) -> List[Dict[str, Any]]:
         """获取需要更新照片的儿童列表"""
         try:
@@ -607,29 +537,29 @@ class ChildFaceDatabaseIntegration:
                 cursor.close()
                 connection.close()
 
-    def cleanup_old_records(self, days: int = 90):
-        """清理旧的识别记录"""
-        try:
-            connection = self._get_connection()
-            cursor = connection.cursor()
+    # def cleanup_old_records(self, days: int = 90):
+    #     """清理旧的识别记录"""
+    #     try:
+    #         connection = self._get_connection()
+    #         cursor = connection.cursor()
             
-            cutoff_date = datetime.now() - timedelta(days=days)
+    #         cutoff_date = datetime.now() - timedelta(days=days)
             
-            delete_query = "DELETE FROM recognition_records WHERE created_at < %s"
-            cursor.execute(delete_query, (cutoff_date,))
+    #         delete_query = "DELETE FROM recognition_records WHERE created_at < %s"
+    #         cursor.execute(delete_query, (cutoff_date,))
             
-            deleted_count = cursor.rowcount
-            logger.info(f"✅ 清理了 {deleted_count} 条旧识别记录")
+    #         deleted_count = cursor.rowcount
+    #         logger.info(f"✅ 清理了 {deleted_count} 条旧识别记录")
             
-            return deleted_count
+    #         return deleted_count
             
-        except Error as e:
-            logger.error(f"❌ 清理记录失败: {e}")
-            return 0
-        finally:
-            if connection.is_connected():
-                cursor.close()
-                connection.close()
+    #     except Error as e:
+    #         logger.error(f"❌ 清理记录失败: {e}")
+    #         return 0
+    #     finally:
+    #         if connection.is_connected():
+    #             cursor.close()
+    #             connection.close()
 
     def delete_images(self, object_keys: List[str], ids: List[int]) -> Dict[str, Any]:
         """

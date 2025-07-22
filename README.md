@@ -47,7 +47,7 @@ pic_sys/
 # 安装基础依赖
 pip install torch facenet-pytorch mysql-connector-python flask flask-cors pillow numpy python-dotenv
 
-# 安装OSS依赖（因为使用的是阿里云OSS)
+# 安装OSS依赖（阿里云OSS)
 pip install oss2
 ```
 
@@ -162,7 +162,6 @@ curl http://localhost:5000/config
 
 ### 对象存储（阿里云OSS）
 - 自动上传识别后的图片
-- 支持CDN加速访问
 - 提供公开访问URL
 
 ## 🔍 日志管理

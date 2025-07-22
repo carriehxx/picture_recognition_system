@@ -68,11 +68,6 @@ def check_system_requirements():
     """检查系统要求"""
     print("\n🔍 检查系统要求...")
     
-    # 检查Python版本
-    if sys.version_info < (3, 7):
-        print("❌ Python版本过低，需要Python 3.7+")
-        return False
-    
     print(f"✅ Python版本: {sys.version}")
     
     # 检查依赖包
@@ -204,21 +199,10 @@ def main():
     # 加载环境变量
     load_environment()
     
-    # 检查系统要求
-    # if not check_system_requirements():
-    #     print("\n❌ 系统检查失败，请先运行 python setup_environment.py")
-    #     sys.exit(1)
-    
     # 测试连接
     if not test_connections():
         print("\n❌ 连接测试失败，请检查配置")
         sys.exit(1)
-    
-    # 清理旧数据
-    cleanup_old_data()
-    
-    # 打印使用示例
-    # print_usage_examples()
     
     # print("\n✅ 系统检查完成，正在启动API服务...")
     

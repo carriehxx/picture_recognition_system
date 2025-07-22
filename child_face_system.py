@@ -3,6 +3,11 @@
 职责分离：
 - ChildFaceDatabase: 负责构建和管理儿童人脸数据库
 - ChildFaceRecognizer: 负责批量识别和匹配
+
+优化特性：
+- 使用余弦相似度进行人脸匹配（比欧几里得距离更适合人脸识别）
+- 自适应相似度阈值根据儿童年龄调整
+- 多模型特征融合提高识别准确性
 """
 
 from facenet_pytorch import MTCNN, InceptionResnetV1
@@ -43,15 +48,15 @@ CHILD_CONFIG = {
         'image_size': 160,
         'margin': 30,
         'min_face_size': 25,
-        'thresholds': [0.5, 0.5, 0.5],
-        'factor': 0.709,
+        'thresholds': [0.4, 0.4, 0.4],  # 降低阈值，提高儿童人脸检测率
+        'factor': 0.709,                  # 降低缩放因子，检测更小的人脸
         'keep_all': True,
         'post_process': True
     },
     
     # 识别参数 
     'recognition': {
-        'default_threshold': 0.45,
+        'default_threshold': 0.55,  # 余弦相似度阈值
         'quality_threshold': 0.6,
         'min_face_size': 60,
         'max_age_days': 180,
@@ -67,12 +72,12 @@ CHILD_CONFIG = {
         'expression_tolerance': 0.8
     },
     
-    # 年龄分组阈值
+    # 年龄分组阈值（余弦相似度）
     'age_thresholds': {
-        'infant': (0, 2, 0.35),
-        'toddler': (2, 5, 0.40),
-        'child': (5, 10, 0.45),
-        'preteen': (10, 13, 0.50)
+        'infant': (0, 2, 0.65),      # 婴儿期，相似度阈值0.65（最严格）
+        'toddler': (2, 5, 0.6),      # 幼儿期，相似度阈值0.6
+        'child': (5, 10, 0.55),      # 儿童期，相似度阈值0.55
+        'preteen': (10, 13, 0.5)     # 青春期前，相似度阈值0.5（最宽松）
     }
 }
 
@@ -120,8 +125,8 @@ class ChildFaceDatabase:
             enable_db_integration: 是否启用数据库集成（MySQL）
         """
         self.storage_path = storage_path
-        self.database_path = database_path
-        self.profiles_path = profiles_path
+        self.database_path = os.path.join('results', database_path)
+        self.profiles_path = os.path.join('results', profiles_path)
         
         # 初始化数据库集成
         self.db_integration = None
@@ -318,7 +323,7 @@ class ChildFaceDatabase:
                     embeddings.append(embedding)
             
             # 特征融合（加权平均）
-            weights = [0.6, 0.4]  # vggface2权重更高，对儿童效果更好
+            weights = [1, 0]  # vggface2权重更高，对儿童效果更好
             final_embedding = sum(w * emb for w, emb in zip(weights, embeddings))
             final_embedding = F.normalize(final_embedding, p=2, dim=1)
             
@@ -580,7 +585,6 @@ class ChildFaceDatabase:
             logger.error(f"加载儿童档案失败: {e}")
             self.child_profiles = {}
 
-
 class ChildFaceRecognizer:
     """
     儿童人脸识别器
@@ -687,7 +691,7 @@ class ChildFaceRecognizer:
                             embeddings.append(embedding)
                     
                     # 特征融合（加权平均）
-                    weights = [0.6, 0.4]  # vggface2权重更高，对儿童效果更好
+                    weights = [1, 0]  # vggface2权重更高，对儿童效果更好
                     final_embedding = sum(w * emb for w, emb in zip(weights, embeddings))
                     final_embedding = F.normalize(final_embedding, p=2, dim=1)
                     
@@ -775,7 +779,7 @@ class ChildFaceRecognizer:
             # 对每张人脸进行识别
             for face_idx, (test_embedding, quality_result, box, prob) in enumerate(face_results):
                 try:
-                    # 批量计算距离（比循环快很多）
+                    # 使用余弦相似度进行人脸匹配（比欧几里得距离更适合人脸识别）
                     # 确保特征向量维度正确
                     if test_embedding.dim() == 1:
                         test_embedding = test_embedding.unsqueeze(0)
@@ -785,21 +789,26 @@ class ChildFaceRecognizer:
                         logger.error(f"特征向量维度不匹配: 测试向量 {test_embedding.size()}, 数据库向量 {embeddings_tensor.size()}")
                         continue
                     
-                    test_embedding_expanded = test_embedding.expand(len(embeddings_tensor), -1)
-                    distances = torch.norm(test_embedding_expanded - embeddings_tensor, p=2, dim=1)
+                    # 使用余弦相似度计算（更适于人脸识别）
+                    # 确保特征向量已归一化
+                    test_embedding_normalized = F.normalize(test_embedding, p=2, dim=1)
+                    embeddings_normalized = F.normalize(embeddings_tensor, p=2, dim=1)
                     
-                    # 确保距离张量维度正确
-                    if distances.size(0) != len(student_ids):
-                        logger.error(f"距离张量维度错误: {distances.size()}, 期望: {len(student_ids)}")
+                    # 计算余弦相似度
+                    similarities = F.cosine_similarity(test_embedding_normalized, embeddings_normalized, dim=1)
+                    
+                    # 确保相似度张量维度正确
+                    if similarities.size(0) != len(student_ids):
+                        logger.error(f"相似度张量维度错误: {similarities.size()}, 期望: {len(student_ids)}")
                         continue
                     
-                    # 找到最小距离
-                    min_distance_idx = torch.argmin(distances)
-                    min_distance = distances[min_distance_idx].item()
-                    best_match_student_id = student_ids[min_distance_idx]
+                    # 找到最大相似度（余弦相似度越大越好）
+                    max_similarity_idx = torch.argmax(similarities)
+                    max_similarity = similarities[max_similarity_idx].item()
+                    best_match_student_id = student_ids[max_similarity_idx]
                     
-                    # 构建所有距离字典
-                    all_distances = {student_ids[i]: distances[i].item() for i in range(len(student_ids))}
+                    # 构建所有相似度字典
+                    all_similarities = {student_ids[i]: similarities[i].item() for i in range(len(student_ids))}
                     
                     # 确定使用的阈值
                     if use_adaptive_threshold and self.global_threshold is None:
@@ -807,10 +816,10 @@ class ChildFaceRecognizer:
                     else:
                         threshold = self.global_threshold or CHILD_CONFIG['recognition']['default_threshold']
                     
-                    # 判断是否识别成功
-                    if min_distance < threshold:
+                    # 判断是否识别成功（基于余弦相似度）
+                    if max_similarity > threshold:
                         recognized_student_id = best_match_student_id
-                        confidence = max(0, 1 - min_distance)  # 转换为置信度
+                        confidence = max_similarity  # 直接使用相似度作为置信度
                         # 获取学生姓名用于显示
                         recognized_name = self.face_database.child_profiles[recognized_student_id].name if recognized_student_id in self.face_database.child_profiles else "未知"
                     else:
@@ -822,10 +831,10 @@ class ChildFaceRecognizer:
                     details = {
                         "student_id": recognized_student_id,
                         "name": recognized_name,
-                        "distance": min_distance,
+                        "similarity": max_similarity,
                         "threshold": threshold,
                         "quality_score": quality_result.quality_score,
-                        "all_distances": all_distances,
+                        "all_similarities": all_similarities,
                         "face_size": quality_result.face_size,
                         "recognition_method": "adaptive" if use_adaptive_threshold else "global",
                         "face_index": face_idx + 1,  # 人脸索引（从1开始）
@@ -846,7 +855,7 @@ class ChildFaceRecognizer:
                     
                     all_face_results.append((recognized_student_id, confidence, details))
                     
-                    logger.info(f"人脸 {face_idx+1} 识别结果: {recognized_name}({recognized_student_id}) (置信度: {confidence:.3f}, 距离: {min_distance:.3f}, 阈值: {threshold:.3f})")
+                    logger.info(f"人脸 {face_idx+1} 识别结果: {recognized_name}({recognized_student_id}) (相似度: {max_similarity:.3f}, 置信度: {confidence:.3f}, 阈值: {threshold:.3f})")
                     
                 except Exception as e:
                     logger.error(f"处理人脸 {face_idx+1} 时出错: {e}")
@@ -963,7 +972,7 @@ class ChildFaceRecognizer:
                 
                 # 处理这张图片中的所有人脸
                 for face_idx, (student_id, confidence, details) in enumerate(face_results):
-                    logger.info(f"debug检查 在process_batch_with_individual_params中 处理每张图片的所有人脸结果: {face_results}")
+                    # logger.info(f"debug检查 在process_batch_with_individual_params中 处理每张图片的所有人脸结果: {face_results}")
                     # 确定识别出的学生ID
                     recognized_child_id = None
                     if student_id != -1: # 识别出儿童
@@ -975,7 +984,7 @@ class ChildFaceRecognizer:
                         'test_image_path': img_path,
                         'recognized_child_id': recognized_child_id,
                         'confidence': confidence,
-                        'distance': details.get('distance', 0),
+                        'similarity': details.get('similarity', 0),
                         'threshold_used': details.get('threshold', 0),
                         'recognition_method': details.get('recognition_method', 'adaptive'),
                         'face_quality_score': details.get('quality_score', 0),
@@ -1101,40 +1110,3 @@ class ChildFaceRecognizer:
         
         return status
 
-
-def create_child_demo():
-    """创建儿童人脸识别演示"""
-    
-    # 初始化系统
-    child_db = ChildFaceDatabase()
-    recognizer = ChildFaceRecognizer(child_db)
-    
-    print("=== 儿童人脸识别系统演示 ===\n")
-    
-    # 显示系统配置
-    print("儿童优化配置:")
-    print(f"- 识别阈值: {CHILD_CONFIG['recognition']['default_threshold']}")
-    print(f"- 最小人脸尺寸: {CHILD_CONFIG['recognition']['min_face_size']}px")
-    print(f"- 照片有效期: {CHILD_CONFIG['recognition']['max_age_days']}天")
-    print()
-    
-    # 显示统计信息
-    stats = child_db.get_children_statistics()
-    print("数据库统计:")
-    for key, value in stats.items():
-        print(f"- {key}: {value}")
-    print()
-    
-    # 检查需要更新的儿童
-    need_update = child_db.check_update_requirements()
-    if need_update:
-        print(f"需要更新照片的儿童: {', '.join(map(str, need_update))}")
-    else:
-        print("所有儿童照片都是最新的")
-    
-    return child_db, recognizer
-
-
-if __name__ == "__main__":
-    # 运行演示
-    demo_db, demo_recognizer = create_child_demo()

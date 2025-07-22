@@ -24,9 +24,6 @@ from child_face_system import (
     ChildFaceDatabase, 
     ChildFaceRecognizer, 
     ChildProfile,
-    # FaceQualityResult,
-    # validate_child_images,
-    # benchmark_recognition_performance,
     CHILD_CONFIG
 )
 
@@ -77,6 +74,10 @@ def base64_to_image(base64_string):
         # 解码
         image_data = base64.b64decode(base64_string)
         image = Image.open(io.BytesIO(image_data))
+        
+        # 记录图片信息用于调试
+        logger.info(f"成功解码图片: 格式={image.format}, 模式={image.mode}, 尺寸={image.size}")
+        
         return image
     except Exception as e:
         logger.error(f"Base64解码失败: {e}")
@@ -85,8 +86,29 @@ def base64_to_image(base64_string):
 def save_temp_image(image, format='JPEG'):
     """保存临时图片文件"""
     try:
+        original_mode = image.mode
+        logger.info(f"保存临时图片: 原始模式={original_mode}, 目标格式={format}")
+        
+        # 如果是RGBA格式且要保存为JPEG，需要转换为RGB
+        if image.mode == 'RGBA' and format.upper() == 'JPEG':
+            logger.info("检测到RGBA格式，转换为RGB格式以保存为JPEG")
+            # 创建白色背景
+            background = Image.new('RGB', image.size, (255, 255, 255))
+            # 将RGBA图片粘贴到白色背景上
+            background.paste(image, mask=image.split()[-1])  # 使用alpha通道作为mask
+            image = background
+        elif image.mode == 'RGBA' and format.upper() == 'PNG':
+            # PNG支持RGBA，直接保存
+            logger.info("RGBA格式，直接保存为PNG")
+            pass
+        elif image.mode != 'RGB' and format.upper() == 'JPEG':
+            # 其他格式转换为RGB
+            logger.info(f"将{image.mode}格式转换为RGB格式")
+            image = image.convert('RGB')
+        
         temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=f'.{format.lower()}')
         image.save(temp_file.name, format=format)
+        logger.info(f"临时文件保存成功: {temp_file.name}")
         return temp_file.name
     except Exception as e:
         logger.error(f"保存临时文件失败: {e}")
@@ -358,7 +380,7 @@ def batch_recognize():
                 uploader_ids=uploader_ids,
                 max_workers=max_workers
             )
-            logger.info(f"debug检查 在face_recognition_api.py中 批量处理结果: {result}")
+            # logger.info(f"debug检查 在face_recognition_api.py中 批量处理结果: {result}")
             
             # 检查结果格式
             if not isinstance(result, dict):
@@ -581,6 +603,12 @@ def delete_image():
             'error': f'删除图片失败: {str(e)}'
         }), 500
 
+# @app.route('/database/upload_image',methods=['POST'])
+# def upload_image():
+#     """上传一些不需要人脸识别的图片"""
+#     try:
+#         data = request.json
+        
             
 @app.errorhandler(404)
 def not_found(error):
