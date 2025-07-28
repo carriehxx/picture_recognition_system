@@ -33,6 +33,9 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+# 配置Flask应用支持大批量图片上传
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB 最大请求大小
+app.config['MAX_CONTENT_PATH'] = None  # 无路径限制
 
 CORS(app, 
      origins=["*"],  
@@ -132,6 +135,12 @@ def get_config():
             'success': True,
             'data': {
                 'child_config': CHILD_CONFIG,
+                'upload_limits': {
+                    'max_file_size_mb': 500,
+                    'max_images_per_request': 50,
+                    'supported_formats': ['JPEG', 'PNG', 'JPG'],
+                    'description': '支持批量上传最多50张图片，总大小不超过500MB'
+                },
                 'description': '儿童人脸识别系统配置'
             }
         })
@@ -325,6 +334,15 @@ def batch_recognize():
                 'error': '缺少必要参数: images'
             }), 400
         
+        # 检查图片数量限制
+        if len(images) > 50:
+            return jsonify({
+                'success': False,
+                'error': f'图片数量过多: {len(images)}，最多支持50张图片'
+            }), 400
+        
+        logger.info(f"开始批量识别: {len(images)}张图片")
+        
         # 检查数组长度是否匹配
         if len(class_ids) != len(images):
             return jsonify({
@@ -354,7 +372,10 @@ def batch_recognize():
         temp_paths = []
         try:
             # 处理所有图片
+            logger.info(f"开始处理 {len(images)} 张图片...")
             for i, image_base64 in enumerate(images):
+                logger.info(f"处理第 {i+1}/{len(images)} 张图片")
+                
                 image = base64_to_image(image_base64)
                 if image is None:
                     return jsonify({
@@ -370,6 +391,8 @@ def batch_recognize():
                     }), 500
                 
                 temp_paths.append(temp_path)
+            
+            logger.info(f"所有图片处理完成，开始批量识别...")
             
             # 使用新的批量处理方法，支持每张图片独立参数
             result = child_recognizer.process_batch_with_individual_params(
@@ -603,13 +626,17 @@ def delete_image():
             'error': f'删除图片失败: {str(e)}'
         }), 500
 
-# @app.route('/database/upload_image',methods=['POST'])
-# def upload_image():
-#     """上传一些不需要人脸识别的图片"""
-#     try:
-#         data = request.json
-        
-            
+@app.errorhandler(413)
+def too_large(error):
+    """413错误处理 - 请求实体过大"""
+    logger.error(f"请求实体过大: {error}")
+    return jsonify({
+        'success': False,
+        'error': '上传的文件过大，请压缩图片或减少上传数量',
+        'max_size_mb': 500,
+        'timestamp': datetime.now().isoformat()
+    }), 413
+
 @app.errorhandler(404)
 def not_found(error):
     return jsonify({
