@@ -150,8 +150,9 @@ curl http://localhost:5000/config
 
 - **children**: 儿童基本信息
 - **photos**: 照片记录
-- **recognition_records**: 识别记录
+- **photo_child**: 识别记录
 - **face_embeddings**: 人脸特征向量
+- 还有其他的，但这几个是主要的
 
 ## 📊 存储架构
 
@@ -189,15 +190,15 @@ python manage_logs.py clean --days 30
 ```python
 CHILD_CONFIG = {
     'recognition': {
-        'default_threshold': 0.45,    # 默认识别阈值
+        'default_threshold': 0.55,    # 默认识别阈值
         'quality_threshold': 0.6,     # 质量阈值
         'min_face_size': 60,         # 最小人脸尺寸
         'max_age_days': 180,         # 最大年龄差异天数
     },
     'age_thresholds': {
-        'infant': (0, 2, 0.35),      # 婴儿期
-        'toddler': (2, 5, 0.40),     # 幼儿期
-        'child': (5, 10, 0.45),      # 儿童期
+        'infant': (0, 2, 0.65),      # 婴儿期
+        'toddler': (2, 5, 0.60),     # 幼儿期
+        'child': (5, 10, 0.55),      # 儿童期
         'preteen': (10, 13, 0.50)    # 青春期前
     }
 }
