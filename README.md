@@ -24,9 +24,9 @@ pic_sys/
 ├── storage_managers/            # 存储管理器
 │   ├── __init__.py
 │   ├── base_storage.py         # 存储基类
-│   └── local_storage.py        # 本地存储实现（不考虑本地存储）
+│   └── aliyun_oss.py           # 阿里云OSS存储实现
 ├── storage/                     # 本地图片存储
-├── test/                       # 测试图片
+├── resource/                   # 资源文件
 ├── logs/                       # 日志文件目录
 ├── results/                    # 识别结果
 ├── processed/                  # 处理后的图片
@@ -52,7 +52,7 @@ pic_sys/
 
 ```bash
 # 安装基础依赖
-pip install torch facenet-pytorch mysql-connector-python flask flask-cors pillow numpy python-dotenv
+pip install torch facenet-pytorch mysql-connector-python flask flask-cors pillow numpy python-dotenv opencv-python
 
 # 安装OSS依赖（阿里云OSS)
 pip install oss2
@@ -74,6 +74,11 @@ DB_PASSWORD=your_password
 API_HOST=0.0.0.0
 API_PORT=5000
 API_DEBUG=False
+
+# 日志配置
+LOG_LEVEL=INFO
+LOG_MAX_SIZE=10MB
+LOG_BACKUP_COUNT=5
 
 # 阿里云OSS配置
 STORAGE_PROVIDER=aliyun
@@ -102,25 +107,36 @@ python start_system.py
 ### 1. 人脸识别API
 
 #### 批量识别
+**注意**: 所有数组参数的长度必须与 `images` 数组长度一致
 ```bash
 curl -X POST http://localhost:5000/batch_recognize \
   -H 'Content-Type: application/json' \
-  -d '{"images": ["base64图片1", "base64图片2"]}'
+  -d '{
+    "images": ["base64图片1", "base64图片2"],
+    "class_id": [1, 1],
+    "activity_detail": ["户外活动", "室内游戏"],
+    "is_public": [true, false],
+    "uploader_id": [1, 1],
+    "max_workers": 4
+  }'
 ```
 
 ### 2. 儿童管理API
 
 #### 添加儿童
+**注意**: `images` 支持多张照片，`profile` 包含儿童档案信息
 ```bash
 curl -X POST http://localhost:5000/database/add_child \
   -H 'Content-Type: application/json' \
   -d '{
     "name": "张三",
-    "student_id": 1001,
-    "age": 5,
-    "class_id": 1,
-    "images": ["base64图片数据"],
-    "update_if_exists": true
+    "images": ["base64图片数据1", "base64图片数据2"],
+    "update_if_exists": true,
+    "profile": {
+      "student_id": 1001,
+      "age": 5,
+      "class_id": 1
+    }
   }'
 ```
 
@@ -151,15 +167,29 @@ curl http://localhost:5000/system/statistics
 curl http://localhost:5000/config
 ```
 
+#### 删除儿童
+```bash
+curl -X POST http://localhost:5000/database/delete_child \
+  -H 'Content-Type: application/json' \
+  -d '{"student_id": 1001}'
+```
+
+#### 获取数据库信息
+```bash
+curl http://localhost:5000/database/info
+```
+
 ## 🗄️ 数据库设计
 
 系统使用MySQL数据库存储以下信息：
 
-- **children**: 儿童基本信息
-- **photos**: 照片记录
-- **photo_child**: 识别记录
-- **face_embeddings**: 人脸特征向量
-- 还有其他的，但这几个是主要的
+- **children**: 儿童基本信息（姓名、年龄、班级等）
+- **photos**: 照片记录（路径、上传者、活动详情等）
+- **photo_child**: 照片与儿童的关联记录
+- **face_embeddings**: 人脸特征向量和识别阈值
+- **classes**: 班级信息
+- **users**: 用户信息（教师、家长）
+- **system_config**: 系统配置参数
 
 ## 📊 存储架构
 
@@ -277,7 +307,7 @@ python start_system.py
 
 如有问题或建议，请通过以下方式联系：
 - 提交 Issue
-- 发送邮件 [点击这里](mainto:carriehuangxin@foxmail.com)
+- 发送邮件 [点击这里](mailto:carriehuangxin@foxmail.com)
 - 查看项目文档
 
 ---
