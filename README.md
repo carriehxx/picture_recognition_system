@@ -33,6 +33,13 @@ pic_sys/
 └── temp/                       # 临时文件
 ```
 
+## 功能描述
+
+- `face_recognition_api.py` 主要包含了接口信息
+- `child_face_system.py` 主要包含了人脸数据创建类 和 图像人脸识别类，以及一些相关参数
+- `database_integration.py` 主要实现了数据库和OSS的连接，数据和图像存储和修改
+- `start_system.py` 主要用于系统启动，包含了日志设计，环境变量检查，系统要求检查，MySQL和OSS连接，API启动
+
 ## 🚀 快速开始
 
 ### 1. 环境要求
