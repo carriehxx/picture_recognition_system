@@ -231,3 +231,7 @@ aliyun_config.json
 *.swo
 *~ 
 assisting/
+
+
+# 部署文件夹
+/deployment/

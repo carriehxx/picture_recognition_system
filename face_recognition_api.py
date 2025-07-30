@@ -652,8 +652,18 @@ def internal_error(error):
     }), 500
 
 if __name__ == '__main__':
-    # 启动时初始化模型
-    initialize_models()
+    # 启动时进行基本检查
+    print("🔍 检查系统环境...")
+    
+    # 检查环境变量
+    flask_port = os.environ.get('FLASK_PORT', 5006)
+    flask_debug = os.environ.get('FLASK_DEBUG', '0') == '1'
+    
+    print(f"📡 服务端口: {flask_port}")
+    print(f"🔧 调试模式: {'启用' if flask_debug else '禁用'}")
+    
+    # 注意：模型初始化延迟到第一次API调用时进行
+    print("⚠️  模型将在第一次API调用时初始化")
     
     print("🎯 儿童人脸识别API服务启动")
     print("📋 可用的API端点:")
@@ -677,7 +687,7 @@ if __name__ == '__main__':
     # 启动Flask应用
     app.run(
         host='0.0.0.0',
-        port=5000,
+        port=int(os.environ.get('FLASK_PORT', 5006)),
         debug=debug_mode,  # 根据环境变量决定
         threaded=True
     ) 
